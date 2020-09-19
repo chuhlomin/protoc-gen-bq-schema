@@ -44,6 +44,8 @@ var (
 		parent:   nil,
 		children: make(map[string]*ProtoPackage),
 		types:    make(map[string]*descriptor.DescriptorProto),
+		comments: make(map[string]Comments),
+		path:     make(map[string]string),
 	}
 )
 
@@ -98,7 +100,7 @@ func registerType(pkgName *string, msg *descriptor.DescriptorProto, comments Com
 
 func (pkg *ProtoPackage) lookupType(name string) (*descriptor.DescriptorProto, bool, Comments, string) {
 	if strings.HasPrefix(name, ".") {
-		return globalPkg.relativelyLookupType(name[1:len(name)])
+		return globalPkg.relativelyLookupType(name[1:])
 	}
 
 	for ; pkg != nil; pkg = pkg.parent {
@@ -397,9 +399,12 @@ var e_TableName = &proto.ExtensionDesc{
 
 func convertFile(file *descriptor.FileDescriptorProto) ([]*plugin.CodeGeneratorResponse_File, error) {
 	name := path.Base(file.GetName())
-	pkg, ok := globalPkg.relativelyLookupPackage(file.GetPackage())
-	if !ok {
-		return nil, fmt.Errorf("no such package found: %s", file.GetPackage())
+	pkg := globalPkg
+	if file.Package != nil {
+		var ok bool
+		if pkg, ok = globalPkg.relativelyLookupPackage(file.GetPackage()); !ok {
+			return nil, fmt.Errorf("no such package found: %s", file.GetPackage())
+		}
 	}
 
 	comments := ParseComments(file)
@@ -433,8 +438,12 @@ func convertFile(file *descriptor.FileDescriptorProto) ([]*plugin.CodeGeneratorR
 			return nil, err
 		}
 
+		filename := tableName + ".schema"
+		if file.Package != nil {
+			filename = strings.Replace(file.GetPackage(), ".", "/", -1) + "/" + filename
+		}
 		resFile := &plugin.CodeGeneratorResponse_File{
-			Name:    proto.String(fmt.Sprintf("%s/%s.schema", strings.Replace(file.GetPackage(), ".", "/", -1), tableName)),
+			Name:    proto.String(filename),
 			Content: proto.String(string(jsonSchema)),
 		}
 		response = append(response, resFile)

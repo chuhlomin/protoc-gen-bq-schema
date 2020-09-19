@@ -499,3 +499,25 @@ func TestExtraFields(t *testing.T) {
 			]`,
 		})
 }
+
+func TestGlobalPackage(t *testing.T) {
+	testConvert(t, `
+			file_to_generate: "foo.proto"
+			proto_file <
+				name: "foo.proto"
+				message_type <
+					name: "FooProto"
+					field <
+						name: "i32" number: 1 type: TYPE_MESSAGE label: LABEL_OPTIONAL
+						type_name: ".google.protobuf.Int32Value"
+					>
+					options < [gen_bq_schema.bigquery_opts] <table_name: "foo_table"> >
+				>
+			>
+		`,
+		map[string]string{
+			"foo_table.schema": `[
+				{ "name": "i32", "type": "INTEGER", "mode": "NULLABLE" }
+			]`,
+		})
+}
