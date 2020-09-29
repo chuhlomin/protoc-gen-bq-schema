@@ -215,7 +215,14 @@ var (
 	}
 )
 
-func convertField(curPkg *ProtoPackage, desc *descriptor.FieldDescriptorProto, msgOpts *protos.BigQueryMessageOptions, comments Comments, path string) (*Field, error) {
+func convertField(
+	curPkg *ProtoPackage,
+	desc *descriptor.FieldDescriptorProto,
+	msgOpts *protos.BigQueryMessageOptions,
+	parentMessages map[*descriptor.DescriptorProto]bool,
+	comments Comments,
+	path string) (*Field, error) {
+
 	field := &Field{
 		Name: desc.GetName(),
 	}
@@ -275,7 +282,7 @@ func convertField(curPkg *ProtoPackage, desc *descriptor.FieldDescriptorProto, m
 		return field, nil
 	}
 
-	fields, err := convertFieldsForType(curPkg, desc.GetTypeName())
+	fields, err := convertFieldsForType(curPkg, desc.GetTypeName(), parentMessages)
 	if err != nil {
 		return nil, err
 	}
@@ -289,7 +296,13 @@ func convertField(curPkg *ProtoPackage, desc *descriptor.FieldDescriptorProto, m
 	return field, nil
 }
 
-func converExtraField(curPkg *ProtoPackage, extraFieldDefinition string, comments Comments, path string) (*Field, error) {
+func convertExtraField(
+	curPkg *ProtoPackage,
+	extraFieldDefinition string,
+	parentMessages map[*descriptor.DescriptorProto]bool,
+	comments Comments,
+	path string) (*Field, error) {
+
 	parts := strings.Split(extraFieldDefinition, ":")
 	if len(parts) < 2 {
 		return nil, fmt.Errorf("expecting at least 2 parts in extra field definition divided by colon, got %d", len(parts))
@@ -324,7 +337,7 @@ func converExtraField(curPkg *ProtoPackage, extraFieldDefinition string, comment
 		return field, nil
 	}
 
-	fields, err := convertFieldsForType(curPkg, typeName)
+	fields, err := convertFieldsForType(curPkg, typeName, parentMessages)
 	if err != nil {
 		return nil, err
 	}
@@ -338,7 +351,11 @@ func converExtraField(curPkg *ProtoPackage, extraFieldDefinition string, comment
 	return field, nil
 }
 
-func convertFieldsForType(curPkg *ProtoPackage, typeName string) ([]*Field, error) {
+func convertFieldsForType(
+	curPkg *ProtoPackage,
+	typeName string,
+	parentMessages map[*descriptor.DescriptorProto]bool) ([]*Field, error) {
+
 	recordType, ok, comments, path := curPkg.lookupType(typeName)
 	if !ok {
 		return nil, fmt.Errorf("no such message type named %s", typeName)
@@ -349,17 +366,31 @@ func convertFieldsForType(curPkg *ProtoPackage, typeName string) ([]*Field, erro
 		return nil, err
 	}
 
-	return convertMessageType(curPkg, recordType, fieldMsgOpts, comments, path)
+	return convertMessageType(curPkg, recordType, fieldMsgOpts, parentMessages, comments, path)
 }
 
-func convertMessageType(curPkg *ProtoPackage, msg *descriptor.DescriptorProto, opts *protos.BigQueryMessageOptions, comments Comments, path string) (schema []*Field, err error) {
+func convertMessageType(
+	curPkg *ProtoPackage,
+	msg *descriptor.DescriptorProto,
+	opts *protos.BigQueryMessageOptions,
+	parentMessages map[*descriptor.DescriptorProto]bool,
+	comments Comments,
+	path string) (schema []*Field, err error) {
+
+	if parentMessages[msg] {
+		glog.Infof("Detected recursion for message %s, ignoring subfields", *msg.Name)
+		return
+	}
+
 	if glog.V(4) {
 		glog.Info("Converting message: ", proto.MarshalTextString(msg))
 	}
 
+	parentMessages[msg] = true
+
 	for fieldIndex, fieldDesc := range msg.GetField() {
 		fieldCommentPath := fmt.Sprintf("%s.%d.%d", path, fieldPath, fieldIndex)
-		field, err := convertField(curPkg, fieldDesc, opts, comments, fieldCommentPath)
+		field, err := convertField(curPkg, fieldDesc, opts, parentMessages, comments, fieldCommentPath)
 		if err != nil {
 			glog.Errorf("Failed to convert field %s in %s: %v", fieldDesc.GetName(), msg.GetName(), err)
 			return nil, err
@@ -372,7 +403,7 @@ func convertMessageType(curPkg *ProtoPackage, msg *descriptor.DescriptorProto, o
 	}
 
 	for _, extraField := range opts.GetExtraFields() {
-		field, err := converExtraField(curPkg, extraField, comments, path)
+		field, err := convertExtraField(curPkg, extraField, parentMessages, comments, path)
 		if err != nil {
 			glog.Errorf("Failed to convert extra field %s in %s: %v", extraField, msg.GetName(), err)
 			return nil, err
@@ -380,6 +411,8 @@ func convertMessageType(curPkg *ProtoPackage, msg *descriptor.DescriptorProto, o
 
 		schema = append(schema, field)
 	}
+
+	parentMessages[msg] = false
 
 	return
 }
@@ -426,7 +459,7 @@ func convertFile(file *descriptor.FileDescriptorProto) ([]*plugin.CodeGeneratorR
 		}
 
 		glog.V(2).Info("Generating schema for a message type ", msg.GetName())
-		schema, err := convertMessageType(pkg, msg, opts, comments, path)
+		schema, err := convertMessageType(pkg, msg, opts, make(map[*descriptor.DescriptorProto]bool), comments, path)
 		if err != nil {
 			glog.Errorf("Failed to convert %s: %v", name, err)
 			return nil, err
