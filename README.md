@@ -3,13 +3,16 @@
 [![Build Status](https://ci.chuhlomin.com/api/badges/chuhlomin/protoc-gen-bq-schema/status.svg)](https://ci.chuhlomin.com/chuhlomin/protoc-gen-bq-schema) [![Docker Hub](https://img.shields.io/badge/duckerhub-1.5-lightgrey)](https://hub.docker.com/repository/docker/chuhlomin/protoc-gen-bq-schema)
 
 > This is the fork of [GoogleCloudPlatform/protoc-gen-bq-schema](https://github.com/GoogleCloudPlatform/protoc-gen-bq-schema) repository addressing these PRs:
+>
 > * #12 [Use comments as field description](https://github.com/GoogleCloudPlatform/protoc-gen-bq-schema/pull/12) (from [`master`](https://github.com/chuhlomin/protoc-gen-bq-schema/tree/master) branch in this repository)
 > * #14 [Add support for message-level extra_fields](https://github.com/GoogleCloudPlatform/protoc-gen-bq-schema/pull/14)
 > * #17 [Added enumsasints plugin parameter](https://github.com/GoogleCloudPlatform/protoc-gen-bq-schema/pull/17) – since v1.5
-> 
+> * [Add support for recursive messages](https://github.com/chuhlomin/protoc-gen-bq-schema/pull/5) – since v1.6
+>
 > Default branch of this repository is [`develop`](https://github.com/chuhlomin/protoc-gen-bq-schema/tree/develop).
-> 
+>
 > Two satellite repositories:
+>
 > * [protoc-gen-bq-schema-example-proto](https://github.com/chuhlomin/protoc-gen-bq-schema-example-proto) – example of input Protobuf files
 > * [protoc-gen-bq-schema-example-bq](https://github.com/chuhlomin/protoc-gen-bq-schema-example-bq) – example of generated Big Schema JSON files
 
@@ -21,13 +24,13 @@ So you can reuse existing data definitions in `.proto` for BigQuery with this pl
 
 ## Installation
 
-```
+```bash
 go get github.com/chuhlomin/protoc-gen-bq-schema
 ```
 
 ## Usage
 
-```
+```bash
 protoc --bq-schema_out=path/to/outdir foo.proto
 ```
 
@@ -43,6 +46,7 @@ protoc --bq-schema_out=path/to/out/dir foo.proto --proto_path=. --proto_path=<pa
 ```
 
 ### Example
+
 Suppose that we have the following [`foo.proto`](https://github.com/chuhlomin/protoc-gen-bq-schema-example-proto/blob/master/foo/foo.proto).
 
 ```protobuf
@@ -107,7 +111,7 @@ Example [Docker](https://www.docker.com) run:
 ```bash
 mkdir bq_schema
 docker run -i -t -v $(pwd):/workdir \
-  chuhlomin/protoc-gen-bq-schema:1.5 \
+  chuhlomin/protoc-gen-bq-schema:1.6 \
   -I/workdir \
   -I/workdir/bq \
   --bq-schema_out=/workdir/bq_schema \
@@ -116,9 +120,9 @@ docker run -i -t -v $(pwd):/workdir \
 
 Example [Drone](https://drone.io) step: [`.drone.yml`](https://github.com/chuhlomin/protoc-gen-bq-schema-example-proto/blob/master/.drone.yml#L7-L11)
 
-```
+```yaml
   - name: build
-    image: chuhlomin/protoc-gen-bq-schema:1.5
+    image: chuhlomin/protoc-gen-bq-schema:1.6
     commands:
       - mkdir bq_schema
       - protoc -I/protobuf/ -I. -Ibq --bq-schema_out=bq_schema foo.proto
@@ -126,28 +130,26 @@ Example [Drone](https://drone.io) step: [`.drone.yml`](https://github.com/chuhlo
 
 ## Local Development
 
-To test and build the plugin binary on your machine run the following commands:
-
-```bash
-make clean
-make test
-make install
-
-# optionally to build a Docker image
-docker build -t protoc-gen-bq-schema:local .
-```
-
-To build binaries inside an isolated Docker container:
+To test build binaries inside an isolated Docker container (recommended):
 
 ```bash
 docker run -i -t -v $(pwd):/workdir golang:1.12.14-alpine3.10 /bin/sh
 
 apk add --no-cache make git gcc libc-dev protobuf
-make clean
-make test
-make install
+cd /workdir
+make clean test install
+make examples
 
 exit
+```
+
+To test and build the plugin binary on your machine run the following commands:
+
+```bash
+make clean test install
+
+# (optionally) build a Docker image
+docker build -t protoc-gen-bq-schema:local .
 ```
 
 ## License
